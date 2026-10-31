@@ -13,7 +13,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("termination-bot")
 
-TOKEN = os.getenv("DISCORD_TOKEN", "").strip()
+TOKEN = (os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN") or "").strip()
 GUILD_ID = int(os.getenv("GUILD_ID", "0") or 0)
 REVIEW_CHANNEL_ID = int(os.getenv("REVIEW_CHANNEL_ID", "0") or 0)
 TERMINATED_ROLE_ID = int(os.getenv("TERMINATED_ROLE_ID", "0") or 0)
@@ -22,7 +22,9 @@ REVIEWER_ROLE_IDS = {
     int(x.strip()) for x in os.getenv("REVIEWER_ROLE_IDS", "").split(",")
     if x.strip().isdigit()
 }
-DB_PATH = os.getenv("DB_PATH", "terminations.sqlite3")
+DB_PATH = os.getenv("DB_PATH", "/app/data/terminations.sqlite3")
+if os.path.dirname(DB_PATH):
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 if not TOKEN:
     raise RuntimeError("Не задан DISCORD_TOKEN в файле .env")
@@ -292,7 +294,7 @@ async def on_ready():
     log.info("Бот запущен как %s", bot.user)
 
 
-@bot.tree.command(name="панель-увольнения", description="Опубликовать панель подачи заявления на увольнение")
+@bot.tree.command(name="setup_resignation", description="Create the resignation application panel")
 @app_commands.guild_only()
 @app_commands.default_permissions(administrator=True)
 async def resignation_panel(interaction: discord.Interaction):
@@ -311,25 +313,6 @@ async def resignation_panel(interaction: discord.Interaction):
     )
     embed.set_footer(text="ГИБДД | RMRP «Тверской»")
     await interaction.response.send_message(embed=embed, view=ApplicationPanelView())
-
-
-@bot.tree.command(name="увольнение-статистика", description="Показать последние заявления на увольнение")
-@app_commands.guild_only()
-@app_commands.default_permissions(administrator=True)
-async def resignation_stats(interaction: discord.Interaction):
-    rows = db.execute(
-        "SELECT id,user_id,game_nick,status,created_at FROM applications "
-        "WHERE guild_id=? ORDER BY id DESC LIMIT 10",
-        (interaction.guild_id,)
-    ).fetchall()
-    if not rows:
-        return await interaction.response.send_message("Заявлений пока нет.", ephemeral=True)
-    lines = []
-    for r in rows:
-        status = {"pending": "На рассмотрении", "approved": "Уволен", "rejected": "Отклонено"}.get(r["status"], r["status"])
-        lines.append(f"**№{r['id']}** — {r['game_nick']} — <@{r['user_id']}> — {status}")
-    embed = discord.Embed(title="Последние заявления", description="\n".join(lines), color=discord.Color.blurple())
-    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 bot.run(TOKEN)
